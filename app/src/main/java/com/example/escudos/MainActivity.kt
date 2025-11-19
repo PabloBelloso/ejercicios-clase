@@ -1,91 +1,119 @@
 package com.example.escudos
 
+import android.content.res.Configuration
 import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup
-import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import android.view.Menu
+import android.view.MenuItem
 
-// Modelo de datos: cada equipo tendrá un nombre y un escudo (imagen)
-data class Equipo(val nombre: String, val imagen: Int)
-
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), OnEquipoSeleccionadoListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Referencias a vistas del layout principal
-        val spinnerEquipos = findViewById<Spinner>(R.id.spinnerEquipos)
-        val txtSeleccion = findViewById<TextView>(R.id.txtSeleccion)
+        // Configurar la Toolbar
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
 
-        // Cargamos nombres desde arrays.xml
-        val nombresEquipos = resources.getStringArray(R.array.equipos_nombres)
+        // Solo cargar fragments la primera vez (no cuando rote la pantalla)
+        if (savedInstanceState == null) {
+            cargarFragments()
+        } else {
+            // Recuperar la orientación que guardaste
+            val orientracionGuardada = savedInstanceState.getInt("orientacion")
 
-        // Cargamos imágenes desde drawable
-        val imagenesEquipos = intArrayOf(
-            R.drawable.fcbarcelona,
-            R.drawable.rmadrid,
-            R.drawable.atmadrid,
-            R.drawable.rvalladolid
-        )
+            // Obtener la orientación actual
+            val orientationActual = resources.configuration.orientation
 
-        // Creamos la lista de objetos Equipo combinando nombre + imagen
-        val listaEquipos = nombresEquipos.mapIndexed { index, nombre ->
-            Equipo(nombre, imagenesEquipos[index])
-        }
-
-        // Creamos e instalamos el adaptador personalizado
-        val adaptador = object : ArrayAdapter<Equipo>(
-            this,
-            R.layout.spinner_item,
-            listaEquipos
-        ) {
-            // Método que define cómo se ve cada elemento del Spinner (lista desplegable)
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                return crearVistaPersonalizada(position, convertView, parent)
-            }
-
-            // Método que define cómo se ven los elementos en la lista cuando el usuario la despliega
-            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
-                return crearVistaPersonalizada(position, convertView, parent)
-            }
-
-            // Crea una vista con la imagen y el texto combinados
-            private fun crearVistaPersonalizada(position: Int, convertView: View?, parent: ViewGroup): View {
-                val view = layoutInflater.inflate(R.layout.spinner_item, parent, false)
-                val equipo = listaEquipos[position]
-
-                val imgEquipo = view.findViewById<ImageView>(R.id.imgEquipo)
-                val txtEquipo = view.findViewById<TextView>(R.id.txtEquipo)
-
-                imgEquipo.setImageResource(equipo.imagen)
-                txtEquipo.text = equipo.nombre
-
-                return view
+            // Comparar: si cambiaron, recargar fragments
+            if(orientationActual != orientracionGuardada){
+                cargarFragments()
             }
         }
+    }
 
-        // Asignamos el adaptador al Spinner
-        spinnerEquipos.adapter = adaptador
+    private fun cargarFragments() {
 
-        // Evento: cuando el usuario selecciona un equipo del spinner
-        spinnerEquipos.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>,
-                view: View?,
-                position: Int,
-                id: Long
-            ) {
-                // Obtenemos el equipo seleccionado y actualizamos el TextView
-                val seleccionado = listaEquipos[position]
-                txtSeleccion.text = "Has seleccionado: ${seleccionado.nombre}"
-            }
+        android.util.Log.d("MainActivity", "cargarFragments ejecutado")
+        // Verificar si estamos en horizontal o vertical
+        val esHorizontal = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-            override fun onNothingSelected(parent: AdapterView<*>) {
-                // Si no se selecciona nada (raro, pero posible)
-                txtSeleccion.text = getString(R.string.selecciona_equipo)
-            }
+        if (esHorizontal) {
+            // HORIZONTAL: cargar los dos fragments
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragmentContainerLista, Fragmen_Lista_equipos())
+                .replace(R.id.fragmentContainerMostrar, Fragment_Mostrar_Equipos())
+                .commit()
+        } else {
+            // VERTICAL: cargar solo Fragment Lista
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragmentContainer, Fragmen_Lista_equipos())
+                .commit()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val orientacion = resources.configuration.orientation
+        outState.putInt("orientacion",orientacion)
+    }
+
+    override fun onEquipoSeleccionado(equipo: Equipo) {
+
+        val fragment = Fragment_Mostrar_Equipos()
+        val bundle = Bundle()
+        bundle.putString("nombre_equipo", equipo.nombre)
+        bundle.putInt("escudo_equipo", equipo.escudo)
+        fragment.arguments = bundle
+
+        // 2. Detectar orientación
+        val esHorizontal = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 3. Mostrar el fragment en el contenedor correspondiente
+        if(esHorizontal){
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragmentContainerMostrar, fragment)
+                .commit()
+        } else{
+            // VERTICAL: reemplazar en el contenedor único
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragmentContainer,fragment)
+                .addToBackStack("detalle")
+                .commit()
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_tema_paises -> {
+                aplicarTemaColores()
+                true
+            }
+            R.id.menu_tema_negro -> {
+                aplicarTemaNegro()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun aplicarTemaColores() {
+        // Cambiar colores de la interfaz
+        window.decorView.setBackgroundColor(getColor(android.R.color.white))
+        findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+            .setBackgroundColor(getColor(android.R.color.holo_blue_dark))
+    }
+
+    private fun aplicarTemaNegro() {
+        // Cambiar todo a negro
+        window.decorView.setBackgroundColor(getColor(android.R.color.black))
+        findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+            .setBackgroundColor(getColor(android.R.color.black))
     }
 }
